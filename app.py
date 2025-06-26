@@ -1,24 +1,23 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import libsql_client # Nova biblioteca para o Turso
+import libsql # Biblioteca atualizada para o Turso
 
-# --- CONFIGURAÇÕES DO BANCO DE DADOS (AGORA COM TURSO) ---
+# --- CONFIGURAÇÕES DO BANCO DE DADOS (USANDO A NOVA BIBLIOTECA 'libsql') ---
 
 def conectar_db():
     """Conecta ao banco de dados Turso usando as credenciais do Streamlit Secrets."""
-    # Busca as credenciais de forma segura
     url = st.secrets["TURSO_DATABASE_URL"]
     auth_token = st.secrets["TURSO_AUTH_TOKEN"]
     
-    # Cria a conexão
-    client = libsql_client.create_client(url=url, auth_token=auth_token)
-    return client
+    # A nova forma de conectar é mais direta e síncrona
+    conn = libsql.connect(database=url, auth_token=auth_token)
+    return conn
 
 def inicializar_db():
     """Cria a tabela de pontos no Turso se ela ainda não existir."""
-    client = conectar_db()
-    client.execute('''
+    conn = conectar_db()
+    conn.execute('''
         CREATE TABLE IF NOT EXISTS pontos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             motivo TEXT NOT NULL,
@@ -26,40 +25,42 @@ def inicializar_db():
             data TIMESTAMP
         )
     ''')
-    client.close()
+    conn.commit()
+    conn.close()
 
 def adicionar_pontos(motivo, quantidade):
     """Adiciona um novo registro de pontos na tabela."""
-    client = conectar_db()
-    # A data precisa ser passada como string no formato ISO
+    conn = conectar_db()
     data_iso = datetime.now().isoformat()
-    client.execute(
+    conn.execute(
         "INSERT INTO pontos (motivo, quantidade, data) VALUES (?, ?, ?)",
-        [motivo, quantidade, data_iso]
+        (motivo, quantidade, data_iso) # Usamos tupla para os parâmetros
     )
-    client.close()
+    conn.commit()
+    conn.close()
 
 def buscar_pontos_totais():
     """Calcula e retorna a soma de todos os pontos."""
-    client = conectar_db()
-    rs = client.execute("SELECT SUM(quantidade) FROM pontos")
-    client.close()
-    total = rs[0][0] # A estrutura de retorno é um pouco diferente
-    return total if total is not None else 0
+    conn = conectar_db()
+    # Usar um cursor é a prática padrão
+    cursor = conn.cursor()
+    cursor.execute("SELECT SUM(quantidade) FROM pontos")
+    rs = cursor.fetchone()
+    conn.close()
+    total = rs[0] if rs and rs[0] is not None else 0
+    return total
 
 def buscar_historico():
     """Busca todos os registros de pontos e retorna como um DataFrame do Pandas."""
-    client = conectar_db()
-    rs = client.execute("SELECT data, motivo, quantidade FROM pontos ORDER BY data DESC")
-    client.close()
-    
-    # Converte o resultado para um DataFrame do Pandas
-    df = pd.DataFrame(rs.rows, columns=[col for col in rs.columns])
+    conn = conectar_db()
+    # O Pandas continua funcionando perfeitamente com a nova conexão
+    df = pd.read_sql_query("SELECT data, motivo, quantidade FROM pontos ORDER BY data DESC", conn)
+    conn.close()
     return df
 
 # --- INTERFACE DA APLICAÇÃO (FRONTEND COM STREAMLIT) ---
 
-# Roda a inicialização do DB uma única vez para garantir que a tabela existe
+# Garante que a tabela existe antes de rodar o resto do app
 inicializar_db()
 
 # Configuração da página
@@ -95,6 +96,7 @@ with col2:
 
     if not historico_df.empty:
         historico_df['data'] = pd.to_datetime(historico_df['data'])
+        # Adicionado `errors='coerce'` para maior robustez na conversão de data
         pontos_por_dia = historico_df.groupby(historico_df['data'].dt.date)['quantidade'].sum().reset_index()
         pontos_por_dia = pontos_por_dia.rename(columns={'data': 'Dia', 'quantidade': 'Pontos Ganhos'})
         
