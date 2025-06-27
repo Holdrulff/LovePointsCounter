@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime
 import libsql # Biblioteca atualizada para o Turso
 
-# --- CONFIGURAÇÕES DO BANCO DE DADOS (USANDO A NOVA BIBLIOTECA 'libsql') ---
-
 def conectar_db():
     """Conecta ao banco de dados Turso usando as credenciais do Streamlit Secrets."""
     url = st.secrets["TURSO_DATABASE_URL"]
@@ -61,22 +59,18 @@ def buscar_historico():
 
 # --- INTERFACE DA APLICAÇÃO (FRONTEND COM STREAMLIT) ---
 
-# Garante que a tabela existe antes de rodar o resto do app
 inicializar_db()
 
-# Configuração da página
 st.set_page_config(page_title="Nosso Jogo de Pontos", layout="wide")
 
-# Título principal da página
-st.title("Nosso Jogo de Pontos ❤️")
-st.markdown("O placar oficial do nosso amor e parceria!")
+st.title("LovePoints Counter")
 
 col1, col2 = st.columns((1, 2))
 
 with col1:
     st.header("Placar Atual")
     pontos_totais = buscar_pontos_totais()
-    st.metric(label="Pontuação Total da Namorada", value=f"{pontos_totais} pts", delta="Parabéns, amor!")
+    st.metric(label="", value=f"{pontos_totais} pts", delta="Parabéns, amor!")
 
     st.header("Registrar Pontos")
     with st.form("form_pontos", clear_on_submit=True):
