@@ -54,7 +54,8 @@ def buscar_historico():
     """Busca todos os registros de pontos e retorna como um DataFrame do Pandas."""
     conn = conectar_db()
     # O Pandas continua funcionando perfeitamente com a nova conexão
-    df = pd.read_sql_query("SELECT data, motivo, quantidade FROM pontos ORDER BY data DESC", conn)
+    # A query agora ordena do mais antigo para o mais novo, facilitando o cálculo cumulativo
+    df = pd.read_sql_query("SELECT data, motivo, quantidade FROM pontos ORDER BY data ASC", conn)
     conn.close()
     return df
 
@@ -95,15 +96,28 @@ with col2:
     historico_df = buscar_historico()
 
     if not historico_df.empty:
-        historico_df['data'] = pd.to_datetime(historico_df['data'])
-        # Adicionado `errors='coerce'` para maior robustez na conversão de data
-        pontos_por_dia = historico_df.groupby(historico_df['data'].dt.date)['quantidade'].sum().reset_index()
-        pontos_por_dia = pontos_por_dia.rename(columns={'data': 'Dia', 'quantidade': 'Pontos Ganhos'})
+        # --- LÓGICA DO GRÁFICO ATUALIZADA ---
         
-        st.line_chart(pontos_por_dia, x='Dia', y='Pontos Ganhos')
+        # Converte a coluna 'data' para datetime
+        historico_df['data'] = pd.to_datetime(historico_df['data'])
+        
+        # Agrupa por dia e soma os pontos para obter o saldo diário
+        pontos_diarios = historico_df.groupby(historico_df['data'].dt.date)['quantidade'].sum().reset_index()
+        
+        # AQUI ESTÁ A MÁGICA: Calcula a soma CUMULATIVA dos pontos
+        pontos_diarios['Pontuação Acumulada'] = pontos_diarios['quantidade'].cumsum()
+        
+        # Renomeia as colunas para o gráfico ficar mais claro
+        pontos_diarios = pontos_diarios.rename(columns={'data': 'Dia'})
+        
+        # Plota o gráfico de linha com a pontuação acumulada
+        st.line_chart(pontos_diarios, x='Dia', y='Pontuação Acumulada')
+
+        # --- FIM DA LÓGICA DO GRÁFICO ---
 
         st.header("Histórico de Pontuações")
-        historico_df_display = historico_df.copy()
+        # Para exibir o histórico, invertemos a ordem para mostrar os mais recentes primeiro
+        historico_df_display = historico_df.sort_values(by="data", ascending=False)
         historico_df_display['data'] = historico_df_display['data'].dt.strftime('%d/%m/%Y %H:%M')
         st.dataframe(historico_df_display)
     else:
